@@ -1,6 +1,12 @@
 #include "Sodaq_RN2483.h"
 #include "Arduino.h"
+#include <math.h>
+#include <OneWire.h> 
 
+//int DS18S20_Pin = 13; //DS18S20 Signal pin on digital 13
+#define DS18S20_Pin 13
+//Temperature chip i/o
+OneWire ds(DS18S20_Pin); // on digital pin 13
 
 #define debugSerial SerialUSB
 #define loraSerial Serial1
@@ -15,7 +21,7 @@
 #define WATER_SENSOR 6
 #define BUZZER 8
 #define MAGNETIC_SWITCH 12
-#define TEMPERATURE     13
+//#define VIBRATION_SENSOR 4
 
 int loudness;
 
@@ -119,6 +125,16 @@ void setupLoRaOTAA(){
   }
 }
 
+/*boolean readVibration()
+{
+  int sensorValue=analoglRead(VIBRATION_SENSOR);
+  if (sensorValue>1000) {
+    return true;
+  } else {
+    return false;
+  }
+}*/
+
 int readLoudness()
 {
 	return analogRead(LOUDNESS_SENSOR);
@@ -129,6 +145,10 @@ int readLight()
     int sensorValue = analogRead(LIGHT_SENSOR);
     return map(sensorValue, 11, 27333, 0, 413);
 }
+
+/*void setupVibration() {
+     pinMode(VIBRATION_SENSOR, INPUT);
+}*/
 
 void setupWater() {
      pinMode(WATER_SENSOR, INPUT);
@@ -143,22 +163,61 @@ boolean hasWater()
     }
 }
 
-void setupTemp() {
+/*void setupTemp() {
      pinMode(TEMPERATURE, INPUT);
-}
+}*/
 
 float readTemp()
 {
-    float temperature;
-    int B=4250;            //B value of the thermistor
-    float resistance;
-    int a;
-
-    a=analogRead(TEMPERATURE);
-    resistance=(float)(1023-a)*10000/a; //get the resistance of the sensor;
-    temperature=1/(log(resistance/10000)/B+1/298.15)-273.15;//convert to temperature via datasheet&nbsp;;
-
-	return temperature;
+    /*int B=44000;                 // B value of the thermistor
+    int R0 = 88000;          
+    int a=analogRead(TEMPERATURE);
+    float R = 99000.0*(1023.0/((float)a)-1.0);
+ 
+    float temperature = (1.0/(((log(R/R0))/B+(1/298.15))))-273.15;//convert to temperature via datasheet ;
+ 
+    //Serial.print("temperature = ");
+    //Serial.println(temperature);*/
+    byte data[12];
+    byte addr[8];
+  
+   if ( !ds.search(addr)) {
+     //no more sensors on chain, reset search
+     ds.reset_search();
+     return -1;
+   }
+  
+   if ( OneWire::crc8( addr, 7) != addr[7]) {
+     return -1000; //"CRC is not valid!"
+   }
+  
+   if ( addr[0] != 0x10 && addr[0] != 0x28) {
+     return -1000; //Device is not recognized
+   }
+  
+   ds.reset();
+   ds.select(addr);
+   ds.write(0x44,1); // start conversion, with parasite power on at the end
+  
+   byte present = ds.reset();
+   ds.select(addr);  
+   ds.write(0xBE); // Read Scratchpad
+  
+   
+   for (int i = 0; i < 9; i++) { // we need 9 bytes
+    data[i] = ds.read();
+   }
+   
+   ds.reset_search();
+   
+   byte MSB = data[1];
+   byte LSB = data[0];
+  
+   float tempRead = ((MSB << 8) | LSB); //using two's compliment
+   float TemperatureSum = tempRead / 16;
+   
+   return TemperatureSum;
+  
 }
 
 
@@ -219,6 +278,7 @@ void setup() {
   setupWater();
   setupBuzzer();
   setupMagnet();
+  //setupVibration();
 
 }
 
@@ -306,7 +366,18 @@ void loop() {
   }
   debugSerial.println(data_magnet);
 
+  /*String data_vibration;
+  if (readVibration()) {
+    data_vibration = String("vibration=1");
+    buzzOn();
+  } else {
+    data_vibration = String("vibration=0");
+    buzzOff();
+  }
+  debugSerial.println(data_vibration);*/
 
+  //sendPacket(data_vibration);
+  //blink(20); delay(2980);
   sendPacket(data_loudness);
   blink(20); delay(2980);
   sendPacket(data_temp);
